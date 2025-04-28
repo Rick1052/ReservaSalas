@@ -2,41 +2,44 @@
 
 namespace App\Http\Controllers;
 
-use Carbon\Carbon; // Para trabalhar com datas de forma fácil
+use Carbon\Carbon;
 use App\Models\Reserva;
 use App\Models\Sala;
 use Illuminate\Http\Request;
+use Inertia\Inertia;
 
 class ReservaController extends Controller
 {
     // Mostrar todas as reservas
     public function index()
     {
-        $reservas = Reserva::with('sala')->get(); // já carrega a sala relacionada
-        return view('reservas.index', compact('reservas'));
+        $reservas = Reserva::with('sala')->get();
+        return Inertia::render('Reservas/Index', [
+            'reservas' => $reservas
+        ]);
     }
 
     // Mostrar o formulário para criar uma nova reserva
     public function create()
     {
-        $salas = Sala::all(); // Buscar todas as salas para o select
-        return view('reservas.create', compact('salas'));
+        $salas = Sala::all();
+        return Inertia::render('Reservas/Create', [
+            'salas' => $salas
+        ]);
     }
 
     // Salvar uma nova reserva
     public function store(Request $request)
     {
-        // Validação dos dados
         $request->validate([
             'usuario' => 'required|string|max:255',
             'sala_id' => 'required|exists:salas,id',
-            'data' => 'required|date|after_or_equal:' . Carbon::now()->toDateString(), // Valida que a data não seja anterior à atual
-            'horario' => 'required|date_format:H:i', // Horário deve ser no formato correto
+            'data' => 'required|date|after_or_equal:' . Carbon::now()->toDateString(),
+            'horario' => 'required|date_format:H:i',
         ]);
 
-        // Verificar se já existe uma reserva para a sala no mesmo dia e no mesmo horário com intervalo de 2 horas
         $conflict = Reserva::where('sala_id', $request->sala_id)
-            ->whereDate('data', $request->data) // Verifica o mesmo dia
+            ->whereDate('data', $request->data)
             ->where(function ($query) use ($request) {
                 $query->whereBetween('horario', [
                     Carbon::parse($request->data . ' ' . $request->horario)->subHours(2),
@@ -46,41 +49,42 @@ class ReservaController extends Controller
             ->exists();
 
         if ($conflict) {
-            // Retornar erro em um array, sem redirecionamento
-            return back()->withErrors(['horario' => 'A sala já está reservada neste horário ou em um intervalo de 2 horas.'])
-                ->withInput();
+            return back()->withErrors([
+                'horario' => 'A sala já está reservada neste horário ou em um intervalo de 2 horas.'
+            ])->withInput();
         }
 
-        // Criar a reserva
-        Reserva::create([
-            'usuario' => $request->usuario,
-            'sala_id' => $request->sala_id,
-            'data' => $request->data,
-            'horario' => $request->horario,
-        ]);
+        Reserva::create($request->only(['usuario', 'sala_id', 'data', 'horario']));
 
-        // Retornar mensagem de sucesso em um array
-        return redirect()->route('reservas.index')
-            ->with('status', ['message' => 'Reserva realizada com sucesso!']);
+        return redirect()->route('reservas.index')->with('success', 'Reserva realizada com sucesso!');
     }
 
+    // Mostrar o formulário para editar uma reserva existente
+    public function edit($id)
+    {
+        $reserva = Reserva::findOrFail($id);
+        $salas = Sala::all();
+        return Inertia::render('Reservas/Edit', [
+            'reserva' => $reserva,
+            'salas' => $salas
+        ]);
+    }
+
+    // Atualizar uma reserva existente
     public function update(Request $request, $id)
     {
-        // Validação dos dados
         $request->validate([
             'usuario' => 'required|string|max:255',
             'sala_id' => 'required|exists:salas,id',
-            'data' => 'required|date|after_or_equal:' . Carbon::now()->toDateString(), // Valida que a data não seja anterior à atual
-            'horario' => 'required|date_format:H:i', // Horário deve ser no formato correto
+            'data' => 'required|date|after_or_equal:' . Carbon::now()->toDateString(),
+            'horario' => 'required|date_format:H:i',
         ]);
 
-        // Buscar a reserva existente
         $reserva = Reserva::findOrFail($id);
 
-        // Verificar se já existe uma reserva para a sala no mesmo dia e no mesmo horário com intervalo de 2 horas
         $conflict = Reserva::where('sala_id', $request->sala_id)
-            ->whereDate('data', $request->data) // Verifica o mesmo dia
-            ->where('id', '!=', $id) // Exclui a própria reserva que está sendo atualizada
+            ->whereDate('data', $request->data)
+            ->where('id', '!=', $id)
             ->where(function ($query) use ($request) {
                 $query->whereBetween('horario', [
                     Carbon::parse($request->data . ' ' . $request->horario)->subHours(2),
@@ -90,32 +94,24 @@ class ReservaController extends Controller
             ->exists();
 
         if ($conflict) {
-            // Retornar erro em um array, sem redirecionamento
-            return back()->withErrors(['horario' => 'A sala já está reservada neste horário ou em um intervalo de 2 horas.'])
-                ->withInput();
+            return back()->withErrors([
+                'horario' => 'A sala já está reservada neste horário ou em um intervalo de 2 horas.'
+            ])->withInput();
         }
 
-        // Atualizar a reserva com os dados validados
-        $reserva->update([
-            'usuario' => $request->usuario,
-            'sala_id' => $request->sala_id,
-            'data' => $request->data,
-            'horario' => $request->horario,
-        ]);
+        $reserva->update($request->only(['usuario', 'sala_id', 'data', 'horario']));
 
-        // Retornar mensagem de sucesso em um array
-        return redirect()->route('reservas.index')
-            ->with('status', ['message' => 'Reserva atualizada com sucesso!']);
+        return redirect()->route('reservas.index')->with('success', 'Reserva atualizada com sucesso!');
     }
 
-
-
-    // Deletar uma reserva
+    // Deletar uma reserva    
     public function destroy($id)
     {
         $reserva = Reserva::findOrFail($id);
+
         $reserva->delete();
 
         return redirect()->route('reservas.index')->with('success', 'Reserva deletada com sucesso!');
     }
+
 }
